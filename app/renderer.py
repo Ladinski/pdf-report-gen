@@ -1,7 +1,6 @@
 from datetime import date
 from html import escape
-
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 
 
 def build_report_html(data: dict, orders: list[dict]) -> str:
@@ -144,18 +143,17 @@ def build_report_html(data: dict, orders: list[dict]) -> str:
     """
 
 
-async def render_pdf(html: str, output_path: str):
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
+def render_pdf(html: str, output_path: str):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
 
-        page = await browser.new_page()
+        page = browser.new_page()
+        page.set_content(html)
 
-        await page.set_content(html)
-
-        await page.pdf(
+        page.pdf(
             path=output_path,
             format="A4",
             print_background=True,
         )
 
-        await browser.close()
+        browser.close()

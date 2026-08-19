@@ -23,4 +23,15 @@ def init_db():
             )
             """
         )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
         conn.commit()
