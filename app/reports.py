@@ -54,3 +54,20 @@ def get_report_data():
         "top_products": [dict(row) for row in top_products],
         "orders_per_day": [dict(row) for row in orders_per_day],
     }
+
+def get_all_orders():
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                id,
+                customer,
+                product,
+                amount,
+                created_at
+            FROM orders
+            ORDER BY created_at DESC, id DESC
+            """
+        ).fetchall()
+
+    return [dict(row) for row in rows]
