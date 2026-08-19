@@ -1,23 +1,24 @@
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
+
 from app.db import get_connection, init_db
 from app.renderer import build_report_html, render_pdf
 from app.reports import get_all_orders, get_report_data
-import asyncio
-import sys
 
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(
-        asyncio.WindowsProactorEventLoopPolicy()
-    )
 
 app = FastAPI(title="PDF Report Generator")
 
-REPORTS_DIR = Path("reports")
+BASE_DIR = Path(__file__).resolve().parents[1]
+REPORTS_DIR = BASE_DIR / "reports"
+
+
+class ReportRequest(BaseModel):
+    force: bool = False
 
 
 @app.on_event("startup")
@@ -31,10 +32,41 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/reports", status_code=201)
-async def create_report():
+@app.post("/reports")
+async def create_report(
+    response: Response,
+    request: ReportRequest | None = None,
+):
+    force = request.force if request else False
+    today = datetime.now().date().isoformat()
+
+    # Reuse today's completed report unless force=True.
+    if not force:
+        with get_connection() as conn:
+            existing = conn.execute(
+                """
+                SELECT id, path, created_at
+                FROM reports
+                WHERE date(created_at) = ?
+                  AND path != 'pending'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (today,),
+            ).fetchone()
+
+        if existing:
+            response.status_code = 200
+
+            return {
+                "id": existing["id"],
+                "file": f"/reports/{existing['id']}/file",
+            }
+
     created_at = datetime.now().isoformat()
 
+    # Create the report record first so we have an ID
+    # to use for the PDF filename.
     with get_connection() as conn:
         cursor = conn.execute(
             """
@@ -49,17 +81,22 @@ async def create_report():
 
     output_path = REPORTS_DIR / f"{report_id}.pdf"
 
+    # Query the data.
     data = get_report_data()
     orders = get_all_orders()
 
+    # Convert the data into HTML.
     html = build_report_html(data, orders)
 
+    # Playwright uses the synchronous API, so run it
+    # outside FastAPI's main async event loop.
     await run_in_threadpool(
-    render_pdf,
-    html,
-    str(output_path),
-)
+        render_pdf,
+        html,
+        str(output_path),
+    )
 
+    # Store the finished artifact path.
     with get_connection() as conn:
         conn.execute(
             """
@@ -70,6 +107,8 @@ async def create_report():
             (str(output_path), report_id),
         )
         conn.commit()
+
+    response.status_code = 201
 
     return {
         "id": report_id,
@@ -118,6 +157,12 @@ def download_report(report_id: int):
         raise HTTPException(
             status_code=404,
             detail="Report not found",
+        )
+
+    if report["path"] == "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Report is still being generated",
         )
 
     path = Path(report["path"])
