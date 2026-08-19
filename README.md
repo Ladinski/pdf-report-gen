@@ -34,6 +34,6 @@ Create and activate a virtual environment:
 
 ```bash
 python -m venv .venv
-
+```
 ## PDF Screenshot
 ![alt text](image.png)
