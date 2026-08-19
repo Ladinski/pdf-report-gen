@@ -1,6 +1,13 @@
 from fastapi import FastAPI
 
+from app.db import init_db
+
 app = FastAPI(title="PDF Report Generator")
+
+
+@app.on_event("startup")
+def startup():
+    init_db()
 
 
 @app.get("/health")
