@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+report.db
+reports/*
+!reports/.gitkeep
+
+.env
+.DS_Store
